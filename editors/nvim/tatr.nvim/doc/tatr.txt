@@ -1,0 +1,163 @@
+*tatr.txt*    Neovim wrapper for the tatr task tracker
+
+==============================================================================
+CONTENTS                                                       *tatr-contents*
+
+    1. Introduction ........... |tatr-introduction|
+    2. Setup ................... |tatr-setup|
+    3. Commands ................. |tatr-commands|
+    4. Task browser .............. |tatr-picker|
+    5. Configuration ............. |tatr-config|
+    6. Health .................... |tatr-health|
+
+==============================================================================
+1. Introduction                                             *tatr-introduction*
+
+tatr.nvim shells out to the `tatr` command-line task tracker and surfaces
+its output inside Neovim: task listings land in the quickfix list (or a
+snacks.nvim picker), references and summaries are a keystroke away, and
+new tasks can be created (and opened) without leaving the editor.
+
+It does not modify tatr itself; it only calls the `tatr` binary that must
+already be on |$PATH| (or pointed at via |tatr-config|). The task browser
+(|tatr-picker|) additionally requires snacks.nvim; everything else works
+without it.
+
+==============================================================================
+2. Setup                                                            *tatr-setup*
+
+>lua
+    require("tatr").setup({
+      -- see |tatr-config| for all options
+    })
+<
+
+==============================================================================
+3. Commands                                                      *tatr-commands*
+
+                                                                      *:TatrLs*
+:TatrLs [flags/query...]
+    Runs `tatr ls` and loads the results into the quickfix list.
+    Accepts tatr's own flags (`-c`, `-a`, `-id`, `-debug`) and/or a TQL
+    query, e.g. `:TatrLs :bug and not :ui`.
+
+                                                                *:TatrLsClosed*
+:TatrLsClosed [query...]
+    Shorthand for `:TatrLs -c ...`.
+
+                                                                     *:TatrNew*
+:TatrNew [title...]
+    Creates a new task. Prompts for a title if none is given, then
+    (unless disabled) for tags and a priority. Opens the new TASK.md
+    afterwards.
+
+                                                                    *:TatrPick*
+:TatrPick
+    Fuzzy-searches open tasks in a picker. See |tatr-picker|. Requires
+    snacks.nvim.
+
+                                                              *:TatrPickClosed*
+:TatrPickClosed
+    Like |:TatrPick|, but for closed tasks.
+
+                                                               *:TatrPickQuery*
+:TatrPickQuery
+    Like |:TatrPick|, but opens already in "live" TQL query mode. See
+    |tatr-picker|.
+
+                                                         *:TatrPickQueryClosed*
+:TatrPickQueryClosed
+    Like |:TatrPickQuery|, but for closed tasks.
+
+                                                                 *:TatrSummary*
+:TatrSummary
+    Shows `tatr summary` (tag/priority counts) for open tasks in a
+    floating window. `q` or `<Esc>` closes it.
+
+                                                           *:TatrSummaryClosed*
+:TatrSummaryClosed
+    Like |:TatrSummary|, but for closed tasks.
+
+                                                                     *:TatrRef*
+:TatrRef [huid]
+    Finds every place in the project that mentions a task's HUID (a
+    `grep -rn`, via `tatr ref`) and loads the results into the quickfix
+    list. With no argument: uses the HUID under the cursor if there is
+    one, otherwise falls back to `tatr ref`'s own behavior of detecting
+    the HUID from the current directory (e.g. when editing that task's
+    own TASK.md).
+
+                                                                    *:TatrFind*
+:TatrFind [huid]
+    Looks up a task by HUID (`tatr find <huid> -path-only`) and jumps
+    straight to its TASK.md. With no argument you're prompted, prefilled
+    with the HUID under the cursor or the current buffer's own task
+    folder, if either is available.
+
+                                                                    *:TatrYank*
+:TatrYank [huid]
+    Copies a task's HUID to the system clipboard (register `+`). Pure
+    Lua, no `tatr` call needed. With no argument: uses the HUID under the
+    cursor, or (failing that) the current buffer's own task folder.
+
+==============================================================================
+4. Task browser                                                     *tatr-picker*
+
+A snacks.nvim picker (`require("snacks.picker")`), in the same spirit as
+`Snacks.picker.git_log()`: a list of tasks on one side, a live preview of
+the selected task's TASK.md on the other.
+
+- |:TatrPick| / |:TatrPickClosed| open showing every task (open/closed) in
+  `tatr ls`'s own order; typing fuzzy-filters that list locally against
+  title/tags/status/id.
+- |:TatrPickQuery| / |:TatrPickQueryClosed| open the same picker already
+  in snacks' built-in "live" mode: whatever you type is sent to `tatr ls`
+  verbatim as a real TQL query and re-run on every keystroke, e.g.
+  `:bug and not :ui` or `priority lt 50`. `<c-g>` toggles live mode on/off
+  from any of these pickers.
+- `<CR>` jumps straight to that task's TASK.md.
+- `x` copies the HUID of the task under the cursor to the system
+  clipboard (register `+`), from either mode. See |:TatrYank| for doing
+  the same thing outside the picker.
+
+A suggested lazy.nvim `keys` mapping:
+>lua
+    { "<leader>ts", function() require("tatr").pick() end },
+    { "<leader>tl", function() require("tatr").pick({ live = true }) end },
+    { "<leader>tc", function() require("tatr").pick({ closed = true }) end },
+    { "<leader>tn", function() require("tatr").new() end },
+    { "<leader>ta", function() require("tatr").summary() end },
+    { "<leader>tr", function() require("tatr").ref() end },
+    { "<leader>tf", function() require("tatr").find() end },
+    { "<leader>tx", function() require("tatr").yank() end },
+<
+
+==============================================================================
+5. Configuration                                                    *tatr-config*
+
+`cmd` (string, default: `"tatr"`)
+    Executable name or full path.
+
+`root` (`"buffer"|"cwd"|function`, default: `"buffer"`)
+    Working directory tatr is run from. tatr searches upward from here
+    for a tasks/ folder.
+
+`open_quickfix` (boolean, default: `true`)
+    Run `:copen` after a successful |:TatrLs| or |:TatrRef|.
+
+`prompt_for_tags` / `prompt_for_priority` (boolean, default: `true`)
+    Ask for tags / priority on |:TatrNew|.
+
+`default_priority` (number, default: `100`)
+    Suggested default shown in the priority prompt.
+
+`open_new_task` (boolean, default: `true`)
+    Open the created TASK.md after |:TatrNew|.
+
+==============================================================================
+6. Health                                                            *tatr-health*
+
+Run `:checkhealth tatr` to verify Neovim's version and that `tatr` is
+reachable on |$PATH|.
+
+vim:tw=78:ts=8:ft=help:norl:
